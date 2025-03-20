@@ -1,6 +1,61 @@
 const express = require('express');
 const router = express.Router();
 const Appointment = require('../models/Appointment');
+const Patient = require('../models/Patient');
+
+// 디버깅을 위한 로깅
+router.use((req, res, next) => {
+  console.log('👉 Appointments 요청:', {
+    method: req.method,
+    path: req.path,
+    query: req.query
+  });
+  next();
+});
+
+// 검색 라우트
+router.get('/search', async (req, res) => {
+  try {
+    const { term } = req.query;
+    console.log('🔍 검색어:', term);
+
+    // 환자 검색
+    const patients = await Patient.find({
+      $or: [
+        { name: { $regex: term, $options: 'i' } },
+        { phone: { $regex: term, $options: 'i' } }
+      ]
+    });
+    console.log('👥 환자 검색 결과:', patients.length, '명');
+
+    // 예약 검색
+    const appointments = await Appointment.find({
+      patientId: { $in: patients.map(p => p._id) }
+    })
+    .populate('patientId', 'name phone')
+    .sort({ date: 1, time: 1 });
+    console.log('📅 예약 검색 결과:', appointments.length, '건');
+
+    res.json({
+      status: 'success',
+      data: appointments.map(apt => ({
+        id: apt._id,
+        name: apt.patientId.name,
+        phone: apt.patientId.phone,
+        date: apt.date,
+        time: apt.time,
+        status: apt.status
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ 검색 오류:', error);
+    res.status(500).json({
+      status: 'error',
+      message: '검색 중 오류가 발생했습니다.'
+    });
+  }
+});
 
 // 에러를 next로 전달하는 비동기 핸들러 래퍼
 const asyncHandler = (fn) => (req, res, next) => {
@@ -135,6 +190,32 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     res.json({
         status: 'success',
         message: '예약이 삭제되었습니다'
+    });
+}));
+
+// 예약 가능 여부 확인
+router.get('/availability', asyncHandler(async (req, res) => {
+    const { date, time } = req.query;
+    
+    if (!date || !time) {
+        return res.status(400).json({
+            status: 'error',
+            message: '날짜와 시간이 필요합니다'
+        });
+    }
+
+    // 해당 날짜와 시간에 예약이 있는지 확인
+    const [hours, minutes] = time.split(':');
+    const appointmentDate = new Date(date);
+    appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0);
+
+    const existingAppointment = await Appointment.findOne({
+        appointmentDate
+    });
+
+    res.json({
+        status: 'success',
+        available: !existingAppointment
     });
 }));
 

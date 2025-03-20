@@ -1,63 +1,101 @@
-﻿const express = require('express');
+﻿﻿const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
-const connectDB = require('./config/database');
-const securityMiddleware = require('./middleware/security.middleware');
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-// 라우트 파일 불러오기
+const mongoose = require('mongoose');
 const patientRoutes = require('./routes/patientRoutes');
-const pulseRecordRoutes = require('./routes/pulseRecordRoutes');
-const appointmentRoutes = require('./routes/appointmentRoutes');
-
-// CORS 옵션 설정
-const corsOptions = {
-    origin: 'http://localhost:3000', // React 앱의 주소
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type'],
-    credentials: true
-};
+const appointmentRoutes = require('./routes/appointmentRoutes.js');
+const reservationsRouter = require('./routes/reservations');
 
 const app = express();
 
-// CORS 적용
-app.use(cors(corsOptions));
+// 미들웨어 순서 중요
+app.use(cors());
 app.use(express.json());
 
-// 보안 미들웨어 적용
-securityMiddleware(app);
+// 디버깅을 위한 로깅 미들웨어
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.url}`);
+  next();
+});
 
-// 데이터베이스 연결
-connectDB();
-
-// 라우트 설정
+// 라우트 등록
 app.use('/api/patients', patientRoutes);
-app.use('/api/pulse-records', pulseRecordRoutes);
 app.use('/api/appointments', appointmentRoutes);
+app.use('/api/reservations', reservationsRouter);
 
-// 유비오맥파 프로그램 실행 라우트
-app.post('/api/launch-ubio', (req, res) => {
-  const programPath = '"C:\\Program Files (x86)\\uBioMacpa Pro\\bin\\uBioMacpaPro.exe"';
-  
-  exec(programPath, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`실행 오류: ${error}`);
-      return res.status(500).json({ error: '프로그램 실행 실패' });
-    }
-    res.json({ message: '프로그램이 실행되었습니다.' });
-  });
+// MongoDB 연결 설정
+const connectDB = async () => {
+  try {
+    const mongoURI = 'mongodb://127.0.0.1:27017/clinic';
+    console.log('MongoDB 연결 시도:', mongoURI);
+    
+    await mongoose.connect(mongoURI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000 // 5초 타임아웃
+    });
+    
+    console.log('✅ MongoDB 연결 성공');
+  } catch (err) {
+    console.error('❌ MongoDB 연결 실패:', err.message);
+    console.log('MongoDB가 실행 중인지 확인해주세요.');
+    process.exit(1);
+  }
+};
+
+// 서버 시작
+const startServer = async () => {
+  try {
+    // MongoDB 연결
+    await connectDB();
+
+    // 404 핸들러
+    app.use((req, res) => {
+      console.log(`❌ 404 에러: ${req.method} ${req.url}`);
+      res.status(404).json({
+        status: 'error',
+        message: '요청하신 경로를 찾을 수 없습니다.'
+      });
+    });
+
+    // 에러 핸들링 미들웨어
+    app.use((err, req, res, next) => {
+      console.error('서버 에러:', err);
+      
+      if (err.code === 11000) {
+        return res.status(200).json({
+          status: 'existing',
+          message: '이미 등록된 환자입니다.',
+          error: err.message
+        });
+      }
+
+      res.status(err.status || 500).json({
+        status: 'error',
+        message: err.message || '서버 오류가 발생했습니다.'
+      });
+    });
+
+    // 서버 시작
+    const port = process.env.PORT || 5003;
+    app.listen(port, () => {
+      console.log(`🚀 서버가 ${port}번 포트에서 실행 중입니다.`);
+      console.log('등록된 라우트:', app._router.stack.map(r => r.route?.path).filter(Boolean));
+    });
+
+  } catch (error) {
+    console.error('서버 시작 실패:', error);
+    process.exit(1);
+  }
+};
+
+// 서버 시작
+startServer();
+
+// 프로세스 에러 처리
+process.on('unhandledRejection', (err) => {
+  console.error('처리되지 않은 Promise 거부:', err);
+  process.exit(1);
 });
 
-// 기본 라우트
-app.get('/', (req, res) => {
-    res.json({ message: '도원한의원 API 서버가 실행중입니다.' });
-});
+module.exports = app;
 
-// 에러 핸들링 미들웨어 사용
-app.use(require('./middleware/error.middleware'));
-
-const PORT = process.env.PORT || 5003;
-app.listen(PORT, () => {
-    console.log(`서버가 포트 ${PORT}에서 실행중입니다.`);
-});

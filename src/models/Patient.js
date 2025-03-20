@@ -5,26 +5,56 @@ const patientSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    birthDate: {
-        type: Date,
+    residentNumber: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true
+    },
+    phone: {
+        type: String,
         required: true
     },
     gender: {
         type: String,
-        enum: ['male', 'female', 'other'],
-        required: true
+        required: true,
+        enum: ['male', 'female']
     },
-    contact: {
-        phone: String,
-        email: String
+    height: {
+        type: Number,
+        default: null
     },
-    medicalHistory: {
-        type: String
+    weight: {
+        type: Number,
+        default: null
+    },
+    personality: {
+        type: String,
+        default: null
+    },
+    workIntensity: {
+        type: String,
+        default: null
+    },
+    bmi: {
+        type: Number,
+        default: null
     },
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now
     }
+}, {
+    timestamps: true
 });
 
-module.exports = mongoose.model('Patient', patientSchema); 
+// 중복 체크를 위한 인덱스 생성
+patientSchema.index({ residentNumber: 1 }, { unique: true });
+
+const Patient = mongoose.model('Patient', patientSchema);
+
+module.exports = Patient; 
