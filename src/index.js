@@ -8,6 +8,8 @@ const XLSX = require('xlsx');
 const fs = require('fs');
 const { MongoClient } = require('mongodb');
 const path = require('path');
+const bodyParser = require('body-parser');
+const morgan = require('morgan');
 
 // 싱글톤 패턴으로 변경
 class Database {
@@ -66,8 +68,9 @@ const dbName = 'healthdb';
 
 // 미들웨어 순서 중요
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
 
 // 디버깅을 위한 로깅 미들웨어
 app.use((req, res, next) => {
@@ -77,7 +80,7 @@ app.use((req, res, next) => {
 
 // 라우트 등록
 app.use('/api/patients', patientRoutes);
-app.use('/api/appointments', appointmentRoutes);
+app.use('/api/patients', appointmentRoutes);
 app.use('/api/reservations', reservationsRouter);
 
 // MongoDB 연결 상태 모니터링
@@ -377,4 +380,9 @@ app.post('/api/pulse-records', async (req, res) => {
       details: error.message
     });
   }
+});
+
+// 기본 라우트
+app.get('/', (req, res) => {
+  res.json({ message: '서버가 정상적으로 실행 중입니다.' });
 });
